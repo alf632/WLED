@@ -1,7 +1,7 @@
 #pragma once
 
 #include "wled.h"
-
+#include "game.h"
 
 class TwangUsermod : public Usermod {
 
@@ -19,12 +19,14 @@ class TwangUsermod : public Usermod {
       enabled = enable;
     }
 
+    TwangGame game = TwangGame();
+
   public:
 
     // gets called once at boot. Do all initialization that doesn't depend on
     // network here
     void setup() {
-      
+      game.setup();
       initDone = true;
     
     }
@@ -38,12 +40,8 @@ class TwangUsermod : public Usermod {
      */
     void loop() {
       if (!enabled || strip.isUpdating() || currentPreset>0) return;
-
-      unsigned long now = millis();
-      uint8_t currentMode = strip.getMainSegment().mode;
-      uint8_t currentPalette = strip.getMainSegment().palette;
-
       
+      game.tick();
     }
 
     /*
@@ -162,8 +160,8 @@ class TwangUsermod : public Usermod {
 };
 
 // strings to reduce flash memory usage (used more than twice)
-const char AutoSaveUsermod::_name[]                PROGMEM = "Twang";
-const char AutoSaveUsermod::_twangEnabled[]     PROGMEM = "enabled";
+const char TwangUsermod::_name[]                PROGMEM = "Twang";
+const char TwangUsermod::_twangEnabled[]     PROGMEM = "enabled";
 //const char AutoSaveUsermod::_autoSaveAfterSec[]    PROGMEM = "autoSaveAfterSec";
 //const char AutoSaveUsermod::_autoSavePreset[]      PROGMEM = "autoSavePreset";
 //const char AutoSaveUsermod::_autoSaveApplyOnBoot[] PROGMEM = "autoSaveApplyOnBoot";
