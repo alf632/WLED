@@ -9,6 +9,7 @@
 #define TIMEOUT             30000
 #define LEVEL_COUNT         9
 #define DIRECTION           1
+#define MIN_WAIT_INTERVAL  16    // Min redraw interval (ms) 33 = 30fps / 16 = 63fps
 
 // WOBBLE ATTACK
 #define ATTACK_WIDTH        70     // Width of the wobble attack, world is 1000 wide
@@ -20,13 +21,16 @@
 // PLAYER
 #define MAX_PLAYER_SPEED    10     // Max move speed of the player
 
-
+enum WebController { Idle, Forward, Backward, Shoot };
 
 class TwangGame {
     private:
         long previousMillis = 0;           // Time of the last redraw
         int levelNumber = 0;
         long lastInputTime = 0;
+
+        int brightness = 0;
+        unsigned long mm = 0;
         
         // WOBBLE ATTACK
         long attackMillis = 0;             // Time the attack started
@@ -252,10 +256,7 @@ class TwangGame {
                     if(inLava(enemyPool[i]._pos)){
                         enemyPool[i].Kill();
                     }
-                    // Draw (if still alive)
-                    if(enemyPool[i].Alive()) {
-                        strip.setPixelColor(getLED(enemyPool[i]._pos), CRGB(255, 0, 0));
-                    }
+                    
                     // Hit player?
                     if(
                         (enemyPool[i].playerSide == 1 && enemyPool[i]._pos <= playerPosition) ||
@@ -264,6 +265,14 @@ class TwangGame {
                         die();
                         return;
                     }
+                }
+            }
+        }
+
+        void drawEnemies(){
+            for(int i = 0; i<enemyCount; i++){
+                if(enemyPool[i].Alive()) {
+                    strip.setPixelColor(getLED(enemyPool[i]._pos), CRGB(255, 0, 0));
                 }
             }
         }
@@ -410,19 +419,27 @@ class TwangGame {
         // ----------- JOYSTICK ------------
         // ---------------------------------
         void getInput(){
-            /*
             joystickWobble = 0;
             joystickTilt = 0;
-            if button to the left:
-                joystickTilt = 1;
-            if button to the right:
-                joystickTilt = -1;
-            if attackbutton:
-                joystickWobble = ATTACK_THRESHOLD + 1; 
-            */
+            switch (webController)
+            {
+            case Shoot:
+                joystickWobble = ATTACK_THRESHOLD + 1;
+            
+            case Forward:
+                joystickTilt = 90;
+                break;
+            
+            case Backward:
+                joystickTilt = -90;
+                break;
+            }
+            webController = Idle;
         }
     
     public:
+        WebController webController = Idle;
+
         void setup() {
             // Life LEDs
             for(int i = 0; i<3; i++){
@@ -431,13 +448,70 @@ class TwangGame {
             }
         }
 
-        void tick() {
-            unsigned long mm = millis();
-            int brightness = 0;
+        char* getStage() {
+            return stage;
+        }
 
-            
+        int getLevel() {
+            return levelNumber;
+        }
+
+        void render() {
+            if(stage == "PLAY"){
+                drawPlayer();
+                drawAttack();
+                drawEnemies();
+                drawExit();
+            }else if(stage == "WIN"){
+                // LEVEL COMPLETE
+                strip.fill(CRGB::Black);
+                if(stageStartTime+500 > mm){
+                    int n = max(map(((mm-stageStartTime)), 0, 500, strip.getLength(), 0), long(0));
+                    for(int i = strip.getLength(); i>= n; i--){
+                        brightness = 255;
+                        strip.setPixelColor(i, CRGB(0, brightness, 0));
+                    }
+                }else if(stageStartTime+1000 > mm){
+                    int n = max(map(((mm-stageStartTime)), 500, 1000, strip.getLength(), 0), long(0));
+                    for(int i = 0; i< n; i++){
+                        brightness = 255;
+                        strip.setPixelColor(i, CRGB(0, brightness, 0));
+                    }
+                }else if(stageStartTime+1200 > mm){
+                    strip.setPixelColor(0, CRGB(0, 255, 0));
+                }
+            }else if(stage == "COMPLETE"){
+                strip.fill(CRGB::Black);
+                if(stageStartTime+500 > mm){
+                    int n = max(map(((mm-stageStartTime)), 0, 500, strip.getLength(), 0), long(0));
+                    for(int i = strip.getLength(); i>= n; i--){
+                        brightness = (sin(((i*10)+mm)/500.0)+1)*255;
+                        strip.setPixelColor(i, CHSV(brightness, 255, 50));
+                    }
+                }else if(stageStartTime+5000 > mm){
+                    for(int i = strip.getLength(); i>= 0; i--){
+                        brightness = (sin(((i*10)+mm)/500.0)+1)*255;
+                        strip.setPixelColor(i, CHSV(brightness, 255, 50));
+                    }
+                }else if(stageStartTime+5500 > mm){
+                    int n = max(map(((mm-stageStartTime)), 5000, 5500, strip.getLength(), 0), long(0));
+                    for(int i = 0; i< n; i++){
+                        brightness = (sin(((i*10)+mm)/500.0)+1)*255;
+                        strip.setPixelColor(i, CHSV(brightness, 255, 50));
+                    }
+                }
+            }
+        }
+
+        void tick() {
+            mm = millis();
+            brightness = 0;
+
+            if (mm - previousMillis < MIN_WAIT_INTERVAL) {
+                return;
+            }
+
             getInput();
-            long frameTimer = mm;
             previousMillis = mm;
             if(abs(joystickTilt) > JOYSTICK_DEADZONE){
                 lastInputTime = mm;
@@ -479,65 +553,26 @@ class TwangGame {
                     die();
                 }
                 // Ticks and draw calls
-                FastLED.clear();
                 tickConveyors();
                 tickSpawners();
                 tickBoss();
                 tickEnemies();
-                drawPlayer();
-                drawAttack();
-                drawExit();
             }else if(stage == "DEAD"){
                 // DEAD
-                FastLED.clear();
                 if(!tickParticles()){
                     loadLevel();
                 }
             }else if(stage == "WIN"){
                 // LEVEL COMPLETE
-                FastLED.clear();
-                if(stageStartTime+500 > mm){
-                    int n = max(map(((mm-stageStartTime)), 0, 500, strip.getLength(), 0), long(0));
-                    for(int i = strip.getLength(); i>= n; i--){
-                        brightness = 255;
-                        strip.setPixelColor(i, CRGB(0, brightness, 0));
-                    }
-                }else if(stageStartTime+1000 > mm){
-                    int n = max(map(((mm-stageStartTime)), 500, 1000, strip.getLength(), 0), long(0));
-                    for(int i = 0; i< n; i++){
-                        brightness = 255;
-                        strip.setPixelColor(i, CRGB(0, brightness, 0));
-                    }
-                }else if(stageStartTime+1200 > mm){
-                    strip.setPixelColor(0, CRGB(0, 255, 0));
-                }else{
+                if(stageStartTime+1200 <= mm){
                     nextLevel();
                 }
             }else if(stage == "COMPLETE"){
-                FastLED.clear();
-                if(stageStartTime+500 > mm){
-                    int n = max(map(((mm-stageStartTime)), 0, 500, strip.getLength(), 0), long(0));
-                    for(int i = strip.getLength(); i>= n; i--){
-                        brightness = (sin(((i*10)+mm)/500.0)+1)*255;
-                        strip.setPixelColor(i, CHSV(brightness, 255, 50));
-                    }
-                }else if(stageStartTime+5000 > mm){
-                    for(int i = strip.getLength(); i>= 0; i--){
-                        brightness = (sin(((i*10)+mm)/500.0)+1)*255;
-                        strip.setPixelColor(i, CHSV(brightness, 255, 50));
-                    }
-                }else if(stageStartTime+5500 > mm){
-                    int n = max(map(((mm-stageStartTime)), 5000, 5500, strip.getLength(), 0), long(0));
-                    for(int i = 0; i< n; i++){
-                        brightness = (sin(((i*10)+mm)/500.0)+1)*255;
-                        strip.setPixelColor(i, CHSV(brightness, 255, 50));
-                    }
-                }else{
+                if(stageStartTime+5500 <= mm){
                     nextLevel();
                 }
             }else if(stage == "GAMEOVER"){
                 // GAME OVER!
-                FastLED.clear();
                 stageStartTime = 0;
             }
         }

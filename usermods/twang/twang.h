@@ -39,9 +39,17 @@ class TwangUsermod : public Usermod {
      * Da loop.
      */
     void loop() {
-      if (!enabled || strip.isUpdating() || currentPreset>0) return;
-      
-      game.tick();
+      //if (!enabled || strip.isUpdating() || currentPreset>0) return;
+      if (enabled) {
+        game.tick();
+      }
+    }
+
+    void handleOverlayDraw() {
+      if (enabled) {
+        strip.fill(CRGB::Black);
+        game.render();
+      }
     }
 
     /*
@@ -59,13 +67,51 @@ class TwangUsermod : public Usermod {
 
       String uiDomString = F("<button class=\"btn btn-xs\" onclick=\"requestJson({");
       uiDomString += FPSTR(_name);
-      uiDomString += F(":{");
+      uiDomString += F(":{move:0,");
       uiDomString += FPSTR(_twangEnabled);
       uiDomString += enabled ? F(":false}});\">") : F(":true}});\">");
       uiDomString += F("<i class=\"icons ");
       uiDomString += enabled ? "on" : "off";
       uiDomString += F("\">&#xe08f;</i></button>");
       infoArr.add(uiDomString);
+
+      JsonArray statsArr = user.createNestedArray(F("Stats"));
+      statsArr.add(F("stage: "));
+      statsArr.add(FPSTR(game.getStage()));
+      statsArr.add(F("<br>level: "));
+      statsArr.add(FPSTR(game.getLevel()));
+
+      JsonArray controlArr = user.createNestedArray(F("Control"));
+
+      uiDomString = F("<button class=\"btn btn-xs\" onclick=\"requestJson({");
+      uiDomString += FPSTR(_name);
+      uiDomString += F(":{");
+      uiDomString += FPSTR(_twangEnabled);
+      uiDomString += !enabled ? F(":false") : F(":true");
+      uiDomString += F(",move:1}});\">");
+      uiDomString += F("<i class=\"icons back");
+      uiDomString += F("\">&#xe08f;</i></button>");
+
+      uiDomString += F("<button class=\"btn btn-xs\" onclick=\"requestJson({");
+      uiDomString += FPSTR(_name);
+      uiDomString += F(":{");
+      uiDomString += FPSTR(_twangEnabled);
+      uiDomString += !enabled ? F(":false") : F(":true");
+      uiDomString += F(",move:3}});\">");
+      uiDomString += F("<i class=\"icons home");
+      uiDomString += F("\">&#xe08f;</i></button>");
+
+      uiDomString += F("<button class=\"btn btn-xs\" onclick=\"requestJson({");
+      uiDomString += FPSTR(_name);
+      uiDomString += F(":{");
+      uiDomString += FPSTR(_twangEnabled);
+      uiDomString += !enabled ? F(":false") : F(":true");
+      uiDomString += F(",move:2}});\">");
+      uiDomString += F("<i class=\"icons right");
+      uiDomString += F("\">&#xe08f;</i></button>");
+
+      controlArr.add(uiDomString);
+      
     }
 
     /*
@@ -91,6 +137,11 @@ class TwangUsermod : public Usermod {
           en = (bool)(str!="off"); // off is guaranteed to be present
         }
         if (en != enabled) enable(en);
+        
+        int move = um["move"].as<int>();
+        if (move != Idle) {
+          game.webController = static_cast<WebController>(move);;
+        }
       }
     }
 
